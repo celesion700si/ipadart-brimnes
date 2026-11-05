@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRIMNES 高櫃・3D 組裝</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1d1d1f; --muted:#6e6e73; --line:rgba(0,0,0,.08);
+    --blue:#0058a3; --blue-d:#004a8a; --yellow:#ffdb00;
+    --card:rgba(255,255,255,.86); --bg:#e6e3dd;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);overflow:hidden}
+  body{display:flex;align-items:center;justify-content:center;font-family:"Noto Sans TC",system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:min(100vw,177.78vh);aspect-ratio:16/9;background:#f3f1ec;overflow:hidden;container-type:size;user-select:none}
+  #gl{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #gl:active{cursor:grabbing}
+
+  /* ---- 進度條 ---- */
+  #progress{position:absolute;left:0;right:0;top:0;height:.45cqw;min-height:3px;background:rgba(0,0,0,.07);z-index:5}
+  #progress i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--blue);transition:width .25s linear}
+  #progress b{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.7)}
+  #topbar{position:absolute;left:2cqw;right:2cqw;top:1.6cqw;display:flex;align-items:flex-start;justify-content:space-between;z-index:5;pointer-events:none;opacity:0;transition:opacity .5s}
+  .on #topbar{opacity:1}
+  #step{pointer-events:none}
+  #step .n{font-size:.95cqw;font-weight:700;letter-spacing:.12em;color:var(--blue)}
+  #step .t{font-size:1.7cqw;font-weight:700;margin-top:.25cqw}
+  #step .h{font-size:.85cqw;color:var(--muted);margin-top:.4cqw}
+  #audio{pointer-events:auto;display:flex;align-items:center;gap:.7cqw;background:var(--card);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:99px;padding:.45cqw .9cqw .45cqw .5cqw}
+  #audio button{all:unset;cursor:pointer;width:2cqw;height:2cqw;display:grid;place-items:center;border-radius:50%}
+  #audio button:hover{background:rgba(0,0,0,.06)}
+  #audio svg{width:1.25cqw;height:1.25cqw}
+  #audio span{font-size:.8cqw;color:var(--muted);white-space:nowrap}
+  #vol{-webkit-appearance:none;appearance:none;width:7cqw;height:.3cqw;border-radius:9px;background:linear-gradient(var(--blue),var(--blue)) 0/50% 100% no-repeat,#d6d3cc;outline:none;cursor:pointer}
+  #vol::-webkit-slider-thumb{-webkit-appearance:none;width:1cqw;height:1cqw;border-radius:50%;background:#fff;border:2px solid var(--blue)}
+  #vol::-moz-range-thumb{width:1cqw;height:1cqw;border-radius:50%;background:#fff;border:2px solid var(--blue)}
+
+  /* ---- 字幕 ---- */
+  #sub{position:absolute;left:50%;bottom:3.2cqw;transform:translateX(-50%);max-width:52cqw;text-align:center;z-index:5;pointer-events:none}
+  #sub span{display:inline-block;background:rgba(20,20,22,.78);color:#fff;font-size:1.55cqw;line-height:1.5;font-weight:500;padding:.5cqw 1.3cqw;border-radius:.7cqw;letter-spacing:.03em;transition:opacity .2s}
+  #sub span:empty{opacity:0}
+
+  /* ---- 控制鈕 ---- */
+  #ctrl{position:absolute;left:2cqw;bottom:2.4cqw;display:flex;gap:.7cqw;z-index:6;opacity:0;transform:translateY(1cqw);pointer-events:none;transition:opacity .35s,transform .35s}
+  #ctrl.show{opacity:1;transform:none;pointer-events:auto}
+  .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:.5cqw;font-size:1.05cqw;font-weight:500;padding:.8cqw 1.4cqw;border-radius:99px;background:var(--card);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);box-shadow:0 .3cqw 1.2cqw rgba(0,0,0,.08);transition:transform .15s,background .15s}
+  .btn:hover{transform:translateY(-2px);background:#fff}
+  .btn:active{transform:translateY(0)}
+  .btn svg{width:1.1cqw;height:1.1cqw}
+  .btn.primary{background:var(--blue);color:#fff;border-color:transparent}
+  .btn.primary:hover{background:var(--blue-d)}
+  .btn.done{background:var(--yellow);color:var(--ink)}
+  .btn.done:hover{background:#ffe433}
+  .btn[disabled]{opacity:.35;pointer-events:none}
+  #playing{position:absolute;left:2cqw;bottom:2.4cqw;z-index:5;font-size:.85cqw;color:var(--muted);display:flex;align-items:center;gap:.5cqw;transition:opacity .3s}
+  #playing i{width:.55cqw;height:.55cqw;border-radius:50%;background:var(--blue);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.25}}
+
+  /* ---- 說明書縮圖 ---- */
+  #thumb{position:absolute;right:2cqw;bottom:2.4cqw;display:inline-flex;align-items:center;gap:.5em;padding:.7em 1.1em;min-height:44px;box-sizing:border-box;background:#fff;border-radius:999px;box-shadow:0 .4cqw 1.6cqw rgba(0,0,0,.14);color:inherit;text-decoration:none;font-size:max(13px,.95cqw);font-weight:500;z-index:6;opacity:0;transition:opacity .4s,transform .2s}
+  .on #thumb{opacity:1}
+  #thumb:hover{transform:translateY(-3px)}
+  #thumb em{font-style:normal;color:var(--muted)}
+
+  /* ---- 開始畫面 ---- */
+  #intro{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding-left:8cqw;background:linear-gradient(90deg,rgba(243,241,236,.97) 0%,rgba(243,241,236,.9) 38%,rgba(243,241,236,0) 70%);transition:opacity .7s}
+  #intro.hide{opacity:0;pointer-events:none}
+  #intro .k{font-size:1cqw;letter-spacing:.3em;font-weight:700;color:var(--blue)}
+  #intro h1{font-size:6cqw;font-weight:900;letter-spacing:.02em;line-height:1.05;margin-top:1cqw}
+  #intro p{font-size:1.3cqw;color:var(--muted);margin-top:1.2cqw;line-height:1.7}
+  #intro .meta{display:flex;gap:1.6cqw;margin-top:2cqw;font-size:.95cqw;color:var(--muted)}
+  #intro .meta b{display:block;font-size:1.6cqw;color:var(--ink);font-weight:700}
+  #startBtn{margin-top:3cqw;font-size:1.4cqw;padding:1.1cqw 2.4cqw;gap:.8cqw}
+  #startBtn svg{width:1.3cqw;height:1.3cqw}
+
+  #hint{position:absolute;left:50%;top:1.8cqw;transform:translateX(-50%);font-size:.8cqw;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:.35cqw .9cqw;border-radius:99px;z-index:5;opacity:0;transition:opacity .6s;pointer-events:none}
+  #hint.show{opacity:1}
+  #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
+  #doneMsg{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) scale(.6);z-index:31;text-align:center;opacity:0;pointer-events:none;transition:opacity .4s,transform .6s cubic-bezier(.2,1.6,.4,1)}
+  #doneMsg.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #doneMsg b{display:block;font-size:5cqw;font-weight:900;color:var(--blue);text-shadow:0 .3cqw 0 var(--yellow)}
+  #doneMsg span{font-size:1.4cqw;color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <canvas id="fx"></canvas>
+
+  <div id="progress"><i></i></div>
+  <div id="topbar">
+    <div id="step"><div class="n"></div><div class="t"></div><div class="h">拖曳畫面可旋轉視角</div></div>
+    <div id="audio">
+      <button id="muteBtn" title="背景音樂靜音"></button>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5" title="背景音樂音量">
+      <span>背景音樂</span>
+    </div>
+  </div>
+
+  <div id="sub"><span></span></div>
+  <div id="playing" style="opacity:0"><i></i>播放中</div>
+  <div id="ctrl">
+    <button class="btn" id="prevBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>上一步</button>
+    <button class="btn" id="replayBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>重播</button>
+    <button class="btn primary" id="nextBtn">繼續<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
+
+  <a id="thumb" href="https://www.ikea.com.tw/" target="_blank" rel="noopener">IKEA 官方說明書 <em>p.<span></span></em> ↗</a>
+
+  <div id="intro">
+    <div class="k">林英斌老師的多元智能課 · 3D 組裝</div>
+    <h1>BRIMNES<br>高櫃</h1>
+    <p>以 IKEA BRIMNES 高櫃為例。跟著 3D 動畫與語音旁白，一步一步完成組裝。<br>每段結束會自動暫停，準備好再按「繼續」。</p>
+    <div class="meta"><div><b>31</b>組裝步驟</div><div><b>22</b>段動畫</div><div><b>2</b>個抽屜</div></div>
+    <button class="btn primary" id="startBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.5-6.5a1 1 0 0 0 0-1.8L9.5 4.6A1 1 0 0 0 8 5.5z"/></svg>開始組裝</button>
+  </div>
+  <div id="hint">按住拖曳可旋轉視角 · 滾輪縮放</div>
+  <div id="doneMsg"><b>組裝完成！</b><span>享受你的新 BRIMNES 高櫃</span></div>
+</div>
+
+<script src="narration.js"></script>
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const NAR = window.NARRATION;
+const $ = s => document.querySelector(s);
+const V = a => Array.isArray(a) ? new THREE.Vector3(...a) : a.clone();
+const Y = new THREE.Vector3(0, 1, 0);
+const PI = Math.PI;
+const clamp01 = x => Math.min(1, Math.max(0, x));
+const ease = u => u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u + 2, 3) / 2;
+const easeBack = u => { const c = 1.9; return 1 + (c+1)*Math.pow(u-1,3) + c*Math.pow(u-1,2); };
+
+/* =====================================================================
+   3D 基礎
+   ===================================================================== */
+const stage = $('#stage'), canvas = $('#gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#f3f1ec');
+const camera = new THREE.PerspectiveCamera(34, 16/9, 1, 4000);
+camera.position.set(170, 140, 260);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08;
+controls.enablePan = false; controls.minDistance = 25; controls.maxDistance = 900;
+controls.maxPolarAngle = PI * .495;
+controls.target.set(0, 90, 0);
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#d8d2c6', 2.1));
+const sun = new THREE.DirectionalLight('#ffffff', 2.3);
+sun.position.set(150, 330, 300);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -260, right: 260, top: 260, bottom: -260, near: 50, far: 900 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = .4;
+scene.add(sun);
+const fill = new THREE.DirectionalLight('#fff4e6', .6); fill.position.set(-200, 120, -80); scene.add(fill);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.ShadowMaterial({ opacity: .14 }));
+ground.rotation.x = -PI/2; ground.receiveShadow = true; scene.add(ground);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  fx.resize();
+}
+
+/* ---- 材質 ---- */
+const MAT = {
+  board: () => new THREE.MeshStandardMaterial({ color: '#fbfaf6', roughness: .85 }),
+  hard: () => new THREE.MeshStandardMaterial({ color: '#e7e0d3', roughness: .95 }),
+  wall: new THREE.MeshStandardMaterial({ color: '#efece6', roughness: 1 }),
+  metal: new THREE.MeshStandardMaterial({ color: '#aab2bb', metalness: .25, roughness: .4 }),
+  steel: new THREE.MeshStandardMaterial({ color: '#cfd4d9', metalness: .2, roughness: .45 }),
+  dark: new THREE.MeshStandardMaterial({ color: '#5a5e64', metalness: .2, roughness: .5 }),
+  wood: new THREE.MeshStandardMaterial({ color: '#d9b07a', roughness: .8 }),
+  plastic: new THREE.MeshStandardMaterial({ color: '#f2f2ef', roughness: .6 }),
+  clear: new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: .2, transparent: true, opacity: .85 }),
+  black: new THREE.MeshStandardMaterial({ color: '#2a2b2e', roughness: .55 }),
+  tool: new THREE.MeshStandardMaterial({ color: '#0058a3', roughness: .45 }),
+  toolY: new THREE.MeshStandardMaterial({ color: '#ffcc00', roughness: .5 }),
+  pencil: new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: .6 }),
+  lead: new THREE.MeshStandardMaterial({ color: '#333', roughness: .6 }),
+  mark: new THREE.MeshBasicMaterial({ color: '#2d2d2d' }),
+};
+const EDGE = new THREE.LineBasicMaterial({ color: '#34363a' });
+const HL = new THREE.Color('#5aa0e6');
+
+function board(w, h, d, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || MAT.board());
+  m.castShadow = m.receiveShadow = true;
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), EDGE));
+  return m;
+}
+function cyl(r, h, mat, y = 0, seg = 18) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat);
+  m.position.y = y; m.castShadow = true; return m;
+}
+function box(w, h, d, mat, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = true; return m;
+}
+
+/* ---- 五金（+Y 為插入方向，原點在板材表面） ---- */
+function hwMesh(type) {
+  const g = new THREE.Group(), M = MAT;
+  switch (type) {
+    case 'camDowel': g.add(cyl(.3, 1.0, M.metal, .5), cyl(.26, 1.3, M.steel, -.65)); { const s = new THREE.Mesh(new THREE.SphereGeometry(.42, 14, 10), M.steel); s.position.y = -1.45; g.add(s); } break;
+    case 'dowel': g.add(cyl(.4, 3, M.wood, -.5)); break;
+    case 'camLock': g.add(cyl(.8, 1.1, M.steel, .35, 24), box(1.1, .12, .22, M.dark, 0, -.22, 0)); break;
+    case 'screw': g.add(cyl(.45, .25, M.metal, -.12), cyl(.14, 2, M.metal, 1)); break;
+    case 'euro': g.add(cyl(.5, .3, M.metal, -.15), cyl(.26, 1.2, M.metal, .6)); break;
+    case 'hammerScrew': { const s = new THREE.Mesh(new THREE.SphereGeometry(.55, 16, 8, 0, PI*2, 0, PI/2), M.metal); s.rotation.x = PI; g.add(s, cyl(.2, 2.2, M.metal, 1.1)); } break;
+    case 'conScrew': g.add(cyl(.55, .3, M.metal, -.15), cyl(.3, 4, M.metal, 2)); break;
+    case 'nail': g.add(cyl(.22, .08, M.dark, -.04), cyl(.06, 1.7, M.dark, .85, 8)); break;
+    case 'shelfPin': g.add(cyl(.2, .8, M.metal, .4), box(1.0, .25, 1.0, M.metal, 0, -.12, 0)); break;
+    case 'stop': g.add(box(.8, .45, 3, M.plastic, 0, -.22, 0), cyl(.2, .8, M.plastic, .4).translateZ(.9), cyl(.2, .8, M.plastic, .4).translateZ(-.9)); break;
+    case 'bumper': g.add(cyl(.6, .25, M.clear, -.12)); break;
+    case 'clip': g.add(box(1.2, .6, 1.8, M.plastic, 0, -.3, 0)); break;
+    case 'washer': g.add(cyl(.6, .1, M.metal, -.05)); break;
+    case 'bracket': g.add(box(2.6, .3, 6.5, M.steel, 0, .15, 0), box(2.6, 6, .3, M.steel, 0, 3, -3.1)); return g;
+  }
+  g.scale.setScalar(1.5);
+  return g;
+}
+
+/* ---- 工具（尖端在原點，往 -Y 延伸） ---- */
+function toolMesh(type) {
+  const g = new THREE.Group(), M = MAT;
+  if (type === 'driverF' || type === 'driverP') {
+    g.add(cyl(.32, 9, M.steel, -4.5), cyl(1.25, 8.5, type === 'driverF' ? M.tool : M.toolY, -13.5, 20), cyl(1.05, 1.2, M.black, -9.2));
+    if (type === 'driverF') g.add(box(.9, .6, .15, M.steel, 0, -.3, 0));
+    else { const c = new THREE.Mesh(new THREE.ConeGeometry(.35, .8, 4), M.steel); c.rotation.x = PI; c.position.y = -.4; g.add(c); }
+  } else if (type === 'hex') {
+    g.add(cyl(.3, 3, M.black, -1.5), cyl(.3, 9, M.black, 0).rotateZ(PI/2).translateX(-3).translateY(-4.5));
+    const b = g.children[1]; b.position.set(4.5, -3, 0);
+  } else if (type === 'hammer') {
+    g.add(box(2.2, 6.5, 2.2, M.dark, 0, -3.25, 0));
+    const h = cyl(.65, 20, M.wood, 0); h.rotation.z = PI/2; h.position.set(10.5, -3.25, 0); g.add(h);
+  } else if (type === 'pencil') {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(.45, 1.6, 12), M.wood); c.rotation.x = PI; c.position.y = -.8; g.add(c);
+    const t = new THREE.Mesh(new THREE.ConeGeometry(.15, .5, 8), M.lead); t.rotation.x = PI; t.position.y = -.25; g.add(t);
+    g.add(cyl(.45, 13, M.pencil, -8.1, 6), cyl(.46, 1, M.metal, -15.1, 6));
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+function label(text) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const x = c.getContext('2d');
+  x.font = '700 64px "Noto Sans TC", sans-serif'; x.fillStyle = '#1d1d1f'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, 128, 66);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+  s.scale.set(6, 3, 1); return s;
+}
+
+/* =====================================================================
+   零件註冊
+   ===================================================================== */
+const PARTS = {};
+function reg(name, obj, parent, pos, opt = {}) {
+  const par = typeof parent === 'string' ? PARTS[parent].obj : parent;
+  obj.position.copy(V(pos)); par.add(obj);
+  PARTS[name] = { name, obj, home: V(pos), dir: opt.dir || null, mat: opt.mat || null, base: opt.mat ? opt.mat.color.clone() : null };
+  return obj;
+}
+function addBoard(name, parent, dims, pos, mat) {
+  const m = board(...dims, mat); reg(name, m, parent, pos, { mat: m.material }); return m;
+}
+function addHW(name, type, parent, pos, dir) {
+  const g = new THREE.Group(), inner = hwMesh(type);
+  const d = dir ? V(dir).normalize() : null;
+  if (d) inner.quaternion.setFromUnitVectors(Y, d);
+  g.add(inner); reg(name, g, parent, pos, { dir: d }); return g;
+}
+
+/* ---- 櫃體（直立座標：寬 X、高 Y、正面 +Z，單位 cm） ---- */
+const cabPivot = new THREE.Group(), cabInner = new THREE.Group();
+cabInner.position.set(0, -96, 0); cabPivot.add(cabInner); scene.add(cabPivot);
+
+addBoard('sideF', cabInner, [1.8, 190, 35], [-29.1, 95, 0]);
+addBoard('sideT', cabInner, [1.8, 190, 35], [29.1, 95, 0]);
+addBoard('bottomP', cabInner, [56.4, 1.8, 33.5], [0, 8.9, -.75]);
+addBoard('plinth', cabInner, [56.4, 8, 1.8], [0, 4, 16.6]);
+addBoard('shelfF', cabInner, [56.4, 1.8, 33.5], [0, 64, -.75]);
+addBoard('top', cabInner, [60, 1.8, 35.5], [0, 190.9, 0]);
+addBoard('back', cabInner, [60, 191.5, .3], [0, 95.9, -17.65], MAT.hard());
+[95, 125, 158].forEach((y, i) => addBoard('shelf' + i, cabInner, [56, 1.8, 32], [0, y, -.5]));
+{ const w = new THREE.Mesh(new THREE.BoxGeometry(320, 260, 1), MAT.wall); w.receiveShadow = true; reg('wall', w, cabInner, [0, 130, -18.9]); }
+
+// 側板上的凸輪螺絲、滑軌與螺絲
+const CAM_Y = [8.9, 64], RUN_Y = [13.5, 41];
+for (const [side, sx] of [['F', 1], ['T', -1]]) {
+  const host = 'side' + side; let i = 0;
+  for (const y of CAM_Y) for (const z of [-12, 12]) addHW(`cd${side}${i++}`, 'camDowel', host, [sx*.9, y-95, z], [-sx, 0, 0]);
+  RUN_Y.forEach((y, k) => {
+    const r = board(.8, 2.6, 32, MAT.steel); reg(`cr${side}${k}`, r, host, [sx*1.3, y-95, 0], { dir: new THREE.Vector3(-sx, 0, 0) });
+  });
+  i = 0;
+  for (const y of RUN_Y) for (const z of [-10, 10]) addHW(`crs${side}${i++}`, 'euro', host, [sx*1.7, y-95, z], [-sx, 0, 0]);
+  i = 0;
+  for (const y of CAM_Y) for (const z of [-4, 4]) if (side === 'F') addHW(`dwA${i++}`, 'dowel', host, [.9, y-95, z], [-1, 0, 0]);
+}
+// 底板與固定層板上的偏心鎖、木釘
+{ let a = 0, b = 0, c = 0;
+  for (const host of ['bottomP', 'shelfF']) for (const z of [-12, 12]) {
+    addHW(`clF${a++}`, 'camLock', host, [-24.5, -.9, z+.75], [0, 1, 0]);
+    addHW(`clT${b++}`, 'camLock', host, [24.5, -.9, z+.75], [0, 1, 0]);
+  }
+  for (const host of ['bottomP', 'shelfF']) for (const z of [-4, 4]) addHW(`dwB${c++}`, 'dowel', host, [28.2, 0, z+.75], [-1, 0, 0]);
+}
+{ let i = 0; for (const y of [24, 51]) for (const x of [-29.1, 29.1]) addHW(`st${i++}`, 'stop', cabInner, [x, y, 17.5], [0, 0, -1]); }
+{ let i = 0, j = 0; for (const x of [-29.1, 29.1]) for (const z of [-10, 10]) addHW(`dwC${i++}`, 'dowel', cabInner, [x, 190, z], [0, -1, 0]);
+  for (const x of [-29.1, 29.1]) for (const z of [-14, 14]) addHW(`cs${j++}`, 'conScrew', cabInner, [x, 191.8, z], [0, -1, 0]); }
+// 背板釘子
+const NZ = -17.8;
+addHW('clip', 'clip', cabInner, [-26.8, 187.5, NZ], [0, 0, 1]);
+addHW('nl0', 'nail', cabInner, [-29.1, 190.9, NZ], [0, 0, 1]);
+addHW('nl1', 'nail', cabInner, [29.1, 4, NZ], [0, 0, 1]);
+addHW('nl2', 'nail', cabInner, [29.1, 190.9, NZ], [0, 0, 1]);
+const REST = [];
+[-14, 0, 14].forEach(x => REST.push([x, 190.9]));
+[-21, -7, 7, 21].forEach(x => REST.push([x, 8.9]));
+[30, 55, 80, 105, 130, 155, 178].forEach(y => { REST.push([-29.1, y]); REST.push([29.1, y]); });
+[-21, -7, 7, 21].forEach(x => REST.push([x, 64]));
+[-14, 14].forEach(x => REST.push([x, 4]));
+REST.sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+REST.forEach(([x, y], i) => addHW('nr' + i, 'nail', cabInner, [x, y, NZ], [0, 0, 1]));
+// 層板粒
+{ let i = 0; for (const y of [93.7, 123.7, 156.7]) for (const sx of [-1, 1]) for (const z of [-12, 12]) addHW('sp' + i++, 'shelfPin', cabInner, [sx*28.2, y, z], [sx, 0, 0]); }
+// 防傾倒固定片
+[-20, 20].forEach((x, i) => {
+  addHW('wb' + i, 'bracket', cabInner, [x, 191.8, -14.5], null);
+  addHW('wbs' + i, 'screw', cabInner, [x, 192.1, -13], [0, -1, 0]);
+  addHW('wws' + i, 'screw', cabInner, [x, 196, -17.3], [0, 0, -1]);
+});
+
+/* ---- 抽屜（直立座標，正面 +Z） ---- */
+const drwPivot = new THREE.Group(), drwInner = new THREE.Group();
+drwInner.position.set(0, -11, 0); drwPivot.add(drwInner); scene.add(drwPivot);
+{
+  const f = addBoard('dFront', drwInner, [56, 27, 1.8], [0, 11, 15.1]);
+  const inset = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(46, 17, .05)), EDGE); inset.position.z = .93; f.add(inset);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(46, 17, .1), new THREE.MeshStandardMaterial({ color: '#f1efe9', roughness: .9 })); panel.position.z = .9; f.add(panel);
+}
+addBoard('dSideL', drwInner, [1.6, 20, 28.4], [-24.2, 11, 0]);
+addBoard('dSideR', drwInner, [1.6, 20, 28.4], [24.2, 11, 0]);
+addBoard('dBack', drwInner, [46.8, 20, 1.6], [0, 11, -13.4]);
+addBoard('dBottom', drwInner, [46.8, .3, 27], [0, 2, .3], MAT.hard());
+{ let i = 0, j = 0; for (const x of [-24.2, 24.2]) for (const y of [6, 16]) addHW('dcd' + i++, 'camDowel', drwInner, [x, y, 14.2], [0, 0, 1]);
+  for (const x of [-24.2, 24.2]) for (const y of [3, 19]) addHW('ddw' + j++, 'dowel', drwInner, [x, y, 14.2], [0, 0, 1]); }
+{ let i = 0, j = 0; for (const s of [-1, 1]) for (const y of [5, 17]) addHW('dhs' + i++, 'hammerScrew', drwInner, [s*25, y, -13.4], [-s, 0, 0]);
+  for (const s of [-1, 1]) for (const y of [6, 16]) addHW('dcl' + j++, 'camLock', drwInner, [s*25, y, 12.8], [-s, 0, 0]); }
+[-20, 20].forEach((x, i) => addHW('dbp' + i, 'bumper', drwInner, [x, -1, 14.2], [0, 0, 1]));
+[-1, 1].forEach((s, i) => {
+  const r = board(1, 2.4, 27, MAT.steel);
+  const wheel = cyl(1.1, .6, MAT.plastic, 0); wheel.rotation.z = PI/2; wheel.position.set(0, 0, -13); r.add(wheel);
+  reg(i ? 'drR' : 'drL', r, drwInner, [s*25.5, 1.8, 0]);
+});
+{ let i = 0; for (const s of [-1, 1]) for (const z of [-8, 8]) addHW('drs' + i++, 'euro', drwInner, [s*26, 1.8, z], [-s, 0, 0]); }
+{ const rod = cyl(.45, 47, MAT.steel, 0); rod.rotation.z = PI/2; const g = new THREE.Group(); g.add(rod); reg('drod', g, drwInner, [0, -.3, -13.4]); }
+addHW('drods', 'screw', drwInner, [0, -.75, -13.4], [0, 1, 0]);
+reg('dtab', box(1.4, 2.4, 1, MAT.steel), drwInner, [23.6, -.3, -13.4]);
+{ const h = board(16, 1.6, 2.8, MAT.steel); reg('dhdl', h, drwInner, [0, 19, 17.4]); }
+[-5, 5].forEach((x, i) => addHW('dhn' + i, 'screw', drwInner, [x, 19, 14.2], [0, 0, 1]));
+
+// 最終畫面的兩個抽屜（複製組好的抽屜）
+[[12, 'fd0'], [39.5, 'fd1']].forEach(([y, n]) => { const c = drwInner.clone(true); c.traverse(o => o.visible = true); reg(n, c, cabInner, [0, y, 1.5]); });
+
+/* ---- 開場：工具、五金、配件 ---- */
+const introG = [0, 1, 2].map(() => { const g = new THREE.Group(); scene.add(g); return g; });
+{
+  const tools = [['driverF', -27], ['driverP', -9], ['pencil', 9], ['hammer', 27]];
+  tools.forEach(([t, x], i) => {
+    const m = toolMesh(t), g = new THREE.Group();
+    if (t === 'hammer') { m.rotation.z = PI/2; m.position.set(3.2, 1.5, 0); } else { m.rotation.x = PI; m.position.y = 1.5; }
+    g.add(m); reg('it' + i, g, introG[0], [x, 0, 0]);
+  });
+  const items = [['conScrew', '4x'], ['hammerScrew', '8x'], ['camDowel', '16x'], ['screw', '4x'], ['dowel', '20x'], ['clip', '1x'],
+    ['camLock', '16x'], ['washer', '4x'], ['screw', '2x'], ['euro', '16x'], ['screw', '4x'], ['hex', '1x'],
+    ['stop', '4x'], ['shelfPin', '12x'], ['bumper', '2x'], ['bracket', '2x'], ['nail', '1 包']];
+  items.forEach(([t, n], i) => {
+    const col = i % 6, row = Math.floor(i / 6);
+    const g = new THREE.Group(), m = t === 'hex' ? toolMesh('hex') : hwMesh(t);
+    const holder = new THREE.Group(); holder.add(m);
+    if (t === 'hex') { m.scale.setScalar(.42); m.rotation.x = PI; m.position.set(-1, 2.4, 0); }
+    else if (t === 'bracket') { holder.scale.setScalar(.8); m.position.y = -.5; }
+    else { holder.scale.setScalar(2.2); holder.rotation.x = PI; holder.position.y = 1.5; }
+    if (t === 'camLock' || t === 'washer' || t === 'bumper') { holder.rotation.x = PI*.62; holder.position.y = 1.8; }
+    if (t === 'stop') { holder.rotation.set(PI*.5, 0, 0); holder.position.y = 1; }
+    // 統一大小並讓底部貼齊 y=0，標籤放在下方
+    const bb = new THREE.Box3().setFromObject(holder), sz = bb.getSize(new THREE.Vector3());
+    const k = Math.min(1.6, 6.5 / Math.max(sz.x, sz.y, sz.z));
+    const wrap = new THREE.Group(); wrap.add(holder); wrap.scale.setScalar(k);
+    const c = bb.getCenter(new THREE.Vector3());
+    holder.position.x -= c.x; holder.position.z -= c.z; holder.position.y -= bb.min.y;
+    g.add(wrap);
+    const l = label(n); l.position.set(0, -2.2, 0); l.scale.set(5, 2.5, 1); g.add(l);
+    reg('ih' + i, g, introG[1], [(col - 2.5) * 10.5, 24 - row * 11.5, 0]);
+  });
+  const rod = new THREE.Group(); { const c = cyl(.45, 44, MAT.steel, 0); c.rotation.z = PI/2; rod.add(c, box(1.4, 2.4, 1, MAT.steel, 22, 0, 0), box(1.4, 2.4, 1, MAT.steel, -22, 0, 0)); }
+  reg('ip0', rod, introG[2], [-4, 27, 0]); reg('ip1', rod.clone(), introG[2], [-4, 23.5, 0]);
+  reg('ip2', board(16, 1.6, 2.8, MAT.steel), introG[2], [-14, 15, 0]); reg('ip3', board(16, 1.6, 2.8, MAT.steel), introG[2], [6, 15, 0]);
+  for (let i = 0; i < 4; i++) {
+    const r = board(27, 2.4, 1, MAT.steel); const w = cyl(1.1, .6, MAT.plastic, 0); w.rotation.x = PI/2; w.position.x = 13; r.add(w);
+    reg('ip' + (4+i), r, introG[2], [i % 2 ? 12 : -18, 7 - Math.floor(i/2) * 5, 0]);
+  }
+  [['2x', 26, 25.2], ['2x', 18, 15], ['4x', 31, 4.5]].forEach(([t, x, y], i) => { const l = label(t), g = new THREE.Group(); l.scale.set(9, 4.5, 1); g.add(l); reg('il' + i, g, introG[2], [x, y, 0]); });
+}
+
+/* =====================================================================
+   腳本
+   ===================================================================== */
+const ORI = {
+  cab: { side: { e: [0, 0, PI/2], py: 30 }, front: { e: [PI/2, 0, 0], py: 17.8 }, up: { e: [0, 0, 0], py: 96 } },
+  drw: { front: { e: [PI/2, 0, 0], py: 16 }, up: { e: [0, 0, 0], py: 13.5 } },
+};
+const qOf = e => new THREE.Quaternion().setFromEuler(new THREE.Euler(...e));
+// 依旋轉後的包圍盒半徑計算離地高度，翻轉時不會穿透地板
+const HALF = { cab: [30, 96, 18], drw: [28, 13.5, 16] }, _m = new THREE.Matrix4();
+function restHeight(who, q) {
+  const e = _m.makeRotationFromQuaternion(q).elements, h = HALF[who];
+  return Math.abs(e[1])*h[0] + Math.abs(e[5])*h[1] + Math.abs(e[9])*h[2];
+}
+
+// 動作小工具
+const ins = (n, t, d = .6, dist = 5) => ({ p: n, from: PARTS[n].dir.clone().multiplyScalar(-dist).toArray(), t, d });
+const seq = (names, t0, gap, d = .6, dist = 5) => names.map((n, i) => ins(n, t0 + i*gap, d, dist));
+const R = (pre, n, s = 0) => Array.from({ length: n }, (_, i) => pre + (s + i));
+const tool = (type, on, t, d, mode = 'spin') => ({ tool: type, on, t, d, mode });
+const pop = (names, t0, gap, d = .6) => names.map((p, i) => ({ p, pop: true, t: t0 + i*gap, d }));
+const STAGED = [-58.2, 0, -45];
+
+const S = [
+  { g: 'intro0', page: 3, n: '準備', title: '準備工具', cam: { p: [0, 24, 92], t: [0, 11, 0] },
+    acts: [...pop(['it0'], 3.6, 0, .7), ...pop(['it1'], 4.5, 0, .7), ...pop(['it2'], 6.1, 0, .7), ...pop(['it3'], 7.8, 0, .7)] },
+  { g: 'intro1', page: 4, n: '準備', title: '清點五金零件', cam: { p: [0, 16, 88], t: [0, 13, 0] },
+    acts: pop(R('ih', 17), .6, .42) },
+  { g: 'intro2', page: 5, n: '準備', title: '抽屜滑軌與配件', cam: { p: [0, 22, 80], t: [0, 15, 0] },
+    acts: [...pop(['ip0', 'ip1', 'il0'], .4, .3), ...pop(['ip2', 'ip3', 'il1'], 1.8, .3), ...pop(['ip4', 'ip5', 'ip6', 'ip7', 'il2'], 3.1, .25)] },
+
+  { g: 'cab', page: 6, n: '步驟 1–2', title: '凸輪螺絲與滑軌', cam: { p: [60, 165, 175], t: [15, 0, -22] },
+    acts: [
+      { p: 'sideF', from: [50, 0, 0], t: 0, d: 1 },
+      { p: 'sideT', from: [-8, 0, -45], to: STAGED, rf: [0, PI, 0], rt: [0, PI, 0], t: .3, d: 1 },
+      ...seq(R('cdF', 4), 1.4, .3), ...seq(R('cdT', 4), 2.6, .3),
+      { cam: { p: [165, 85, 95], t: [62, 0, -22] }, t: 4.2 },
+      ...seq(['crF0', 'crF1'], 5.4, .4, .8, 6), ...seq(['crT0', 'crT1'], 6.0, .4, .8, 6),
+      ...seq(R('crsF', 4), 7.0, .35, .5), ...seq(R('crsT', 4), 8.6, .35, .5),
+      tool('driverP', 'crsF0', 6.9, 1.5), tool('driverP', 'crsT1', 8.6, 1.5),
+    ] },
+  { g: 'cab', page: 7, n: '步驟 3–4', title: '底板與固定層板', cam: { p: [175, 120, 125], t: [58, 18, 0] },
+    acts: [
+      ...seq(R('dwA', 4), .2, .3),
+      { p: 'bottomP', from: [45, 0, 0], t: 1.8, d: 1.2 }, { p: 'shelfF', from: [45, 0, 0], t: 2.6, d: 1.2 }, { p: 'plinth', from: [45, 0, 0], t: 3.4, d: 1 },
+      ...seq(R('clF', 4), 5.4, .35),
+      tool('driverF', 'clF0', 6.9, 1.6), tool('driverF', 'clF2', 8.6, 1.6),
+    ] },
+  { g: 'cab', page: 8, n: '步驟 5', title: '裝上第二片側板', cam: { p: [70, 175, 205], t: [0, 25, -15] },
+    acts: [
+      ...seq(R('dwB', 4), .2, .3),
+      { p: 'sideT', from: STAGED, rf: [0, PI, 0], arc: [85, 0, 0], t: 2.3, d: 3 },
+    ] },
+  { g: 'cab', page: 9, n: '步驟 6–7', title: '偏心鎖與前擋塊', cam: { p: [205, 130, 110], t: [58, 36, 0] },
+    acts: [
+      ...seq(R('clT', 4), .2, .3),
+      tool('driverF', 'clT0', 1.5, 1.5), tool('driverF', 'clT2', 3.0, 1.4),
+      { cam: { p: [95, 85, 190], t: [58, 30, 17] }, t: 4.4 },
+      ...R('st', 4).map((n, i) => ins(n, 5.1 + i*.62, .55, 6)),
+      ...R('st', 4).map((n, i) => tool('hammer', n, 4.95 + i*.62, .7, 'hammer')),
+    ] },
+  { g: 'cab', page: 10, n: '步驟 8', title: '裝上頂板', cam: { p: [-205, 135, 140], t: [-78, 30, 0] },
+    acts: [
+      ...seq(R('dwC', 4), .2, .3),
+      { p: 'top', from: [0, 40, 0], t: 2, d: 1.5 },
+    ] },
+  { g: 'cab', page: 11, n: '步驟 9–10', title: '連接螺絲・翻面畫記號', cam: { p: [-205, 135, 140], t: [-78, 30, 0] },
+    acts: [
+      ...seq(R('cs', 4), .3, .55, .6),
+      tool('hex', 'cs0', .2, 1.6), tool('hex', 'cs3', 1.9, 1.6),
+      { orient: 'front', t: 3.9, d: 2.4, lift: 15 },
+      { cam: { p: [240, 150, 90], t: [15, 20, -30] }, t: 4.2 },
+      { tool: 'pencil', mode: 'draw', at: [30.05, 64, -17.3], to: [30.05, 64, -10], dir: [-1, 0, 0], t: 7.4, d: 2.2 },
+      { mark: [[30.05, 64, -17.3], [30.05, 64, -10]], t: 7.7, d: 1.5 },
+    ] },
+  { g: 'cab', page: 12, n: '步驟 11–12', title: '放上背板', cam: { p: [150, 215, 195], t: [0, 20, 0] },
+    acts: [
+      { p: 'back', from: [0, 0, -55], t: .4, d: 1.8 },
+      { cam: { p: [-75, 105, 165], t: [-26, 35, 88] }, t: 3.2 },
+      ins('clip', 4.1, .6), ins('nl0', 5.2, 1.6, 4),
+      tool('hammer', 'nl0', 5.0, 2.1, 'hammer'),
+    ] },
+  { g: 'cab', page: 13, n: '步驟 13–14', title: '對角固定・畫出層板線', cam: { p: [150, 215, 195], t: [0, 20, 0] },
+    acts: [
+      ins('nl1', 1.0, 1.2, 4), tool('hammer', 'nl1', .8, 1.6, 'hammer'),
+      ins('nl2', 3.0, 1.2, 4), tool('hammer', 'nl2', 2.8, 1.6, 'hammer'),
+      { tool: 'pencil', mode: 'draw', at: [-28.6, 64, -17.85], to: [28.6, 64, -17.85], dir: [0, 0, 1], t: 6.4, d: 3.4 },
+      { mark: [[-28.6, 64, -17.85], [28.6, 64, -17.85]], t: 6.8, d: 2.6 },
+    ] },
+  { g: 'cab', page: 14, n: '步驟 15', title: '釘上其餘釘子', cam: { p: [140, 225, 185], t: [0, 20, 0] },
+    acts: [
+      { mark: [[-28.6, 64, -17.85], [28.6, 64, -17.85]], t: 0, d: .01 },
+      ...R('nr', 27).map((n, i) => ins(n, .5 + i*.2, .18, 4)),
+      ...R('nr', 27).map((n, i) => tool('hammer', n, .45 + i*.2, .22, 'tap')),
+    ] },
+  { g: 'cab', page: 15, n: '步驟 16', title: '立起櫃子・插入層板粒', cam: { p: [200, 150, 230], t: [0, 50, 0] },
+    acts: [
+      { orient: 'up', t: .2, d: 2.6, lift: 8 },
+      { cam: { p: [55, 150, 215], t: [0, 122, 0] }, t: 2.3 },
+      ...seq(R('sp', 12), 3.0, .16, .4, 4),
+    ] },
+  { g: 'cab', page: 16, n: '步驟 17', title: '放入活動層板', cam: { p: [55, 150, 240], t: [0, 118, 0] },
+    acts: [
+      ...[0, 1, 2].map(i => ({ p: 'shelf' + i, from: [0, 5, 45], t: .3 + i*1.1, d: 1.3 })),
+      ...[95, 125, 158].map((y, i) => ({ arrow: [0, y + 9, 6], dir: [0, -1, 0], t: 1.2 + i*1.1, d: 1.6 })),
+    ] },
+  { g: 'cab', page: 17, n: '步驟 18', title: '防傾倒固定', cam: { p: [155, 255, 170], t: [0, 175, -10] },
+    acts: [
+      { p: 'wall', from: [0, 0, -40], t: .2, d: 1.4 },
+      { p: 'wb0', from: [0, 10, 0], t: 1.8, d: .8 }, { p: 'wb1', from: [0, 10, 0], t: 2.3, d: .8 },
+      ins('wbs0', 3.6, 1.1), tool('driverP', 'wbs0', 3.3, 1.7), ins('wbs1', 5.3, 1.1), tool('driverP', 'wbs1', 5.0, 1.7),
+      ins('wws0', 7.1, 1), tool('driverP', 'wws0', 6.8, 1.5), ins('wws1', 8.5, 1), tool('driverP', 'wws1', 8.2, 1.5),
+    ] },
+
+  { g: 'drw', page: 18, n: '步驟 19–20', title: '抽屜：面板與側板', cam: { p: [62, 68, 85], t: [0, 9, 0] },
+    acts: [
+      { p: 'dFront', from: [0, 0, -30], t: .3, d: 1.2 },
+      ...seq(R('dcd', 4), 5.0, .45), ...seq(R('ddw', 4), 9.2, .3),
+      { p: 'dSideL', from: [0, 0, -30], t: 11, d: 1.2 }, { p: 'dSideR', from: [0, 0, -30], t: 11.8, d: 1.2 },
+    ] },
+  { g: 'drw', page: 19, n: '步驟 21–22', title: '抽屜：底板與背板', cam: { p: [62, 68, 85], t: [0, 9, 0] },
+    acts: [
+      { p: 'dBottom', from: [0, 0, -35], t: .6, d: 2.2 },
+      { p: 'dBack', from: [0, 0, -30], t: 4.0, d: 1.4 },
+    ] },
+  { g: 'drw', page: 20, n: '步驟 23–24', title: '抽屜：螺絲與偏心鎖', cam: { p: [80, 58, 62], t: [0, 12, 0] },
+    acts: [
+      ...R('dhs', 4).map((n, i) => ins(n, .6 + i*1.0, .8, 4)),
+      ...R('dhs', 4).map((n, i) => tool('hammer', n, .45 + i*1.0, 1.0, 'hammer')),
+      ...seq(R('dcl', 4), 5.0, .35, .5),
+      tool('driverF', 'dcl0', 6.3, 1.3), tool('driverF', 'dcl2', 7.6, 1.3),
+    ] },
+  { g: 'drw', page: 21, n: '步驟 25–26', title: '抽屜：緩衝墊與滑軌', cam: { p: [55, 72, 88], t: [0, 9, 0] },
+    acts: [
+      ins('dbp0', .8, .6, 4), ins('dbp1', 1.4, .6, 4),
+      { p: 'drL', from: [0, 0, -25], t: 4.4, d: 1.2 }, { p: 'drR', from: [0, 0, -25], t: 5.2, d: 1.2 },
+    ] },
+  { g: 'drw', page: 22, n: '步驟 27–28', title: '抽屜：固定滑軌與連桿', cam: { p: [75, 62, 70], t: [0, 10, 0] },
+    acts: [
+      ...R('drs', 4).map((n, i) => ins(n, .5 + i*.75, .5)),
+      ...R('drs', 4).map((n, i) => tool('driverP', n, .35 + i*.75, .8)),
+      { p: 'drod', from: [0, 0, -20], t: 4.2, d: 1.2 }, { p: 'dtab', from: [0, 0, -20], t: 4.2, d: 1.2 },
+      ins('drods', 5.8, .7), tool('driverP', 'drods', 5.6, 1.6),
+    ] },
+  { g: 'drw', page: 23, n: '步驟 29–30', title: '抽屜：翻正與把手', cam: { p: [62, 60, 80], t: [0, 12, 0] },
+    acts: [
+      { orient: 'up', t: .3, d: 2.1, lift: 6 },
+      { p: 'dtab', rf: [PI/2, 0, 0], t: 2.7, d: .8 },
+      { cam: { p: [18, 78, -58], t: [0, 14, 8] }, t: 3.4 },
+      { p: 'dhdl', from: [0, 0, 14], t: 4.6, d: 1 },
+      ins('dhn0', 6.2, .9), tool('driverP', 'dhn0', 6.0, 1.3), ins('dhn1', 7.4, .9), tool('driverP', 'dhn1', 7.2, 1.3),
+      { cam: { p: [58, 48, 92], t: [0, 12, 0] }, t: 8.9 },
+    ] },
+
+  { g: 'final', page: 24, n: '步驟 31', title: '裝入抽屜・完成', cam: { p: [165, 150, 290], t: [0, 88, 0] },
+    acts: [
+      { p: 'fd0', from: [0, 0, 55], t: .8, d: 1.6 }, { p: 'fd1', from: [0, 0, 55], t: 2.0, d: 1.6 },
+      { cam: { p: [-160, 160, 290], t: [0, 95, 0] }, t: 4.3 },
+    ] },
+];
+
+/* =====================================================================
+   狀態重播：每一幀從頭套用所有動作，確保上一步／重播都正確
+   ===================================================================== */
+const ST = {};
+for (const n in PARTS) ST[n] = { vis: false, off: new THREE.Vector3(), rot: [0, 0, 0], sc: 1, hl: 0 };
+const ORS = { cab: {}, drw: {} };
+const _v = new THREE.Vector3();
+
+function runActs(sc, t) {
+  const who = sc.g === 'drw' ? 'drw' : 'cab';
+  for (const a of sc.acts) {
+    if (t < a.t) continue;
+    const u = a.d ? clamp01((t - a.t) / a.d) : 1;
+    if (a.p) {
+      const s = ST[a.p], e = a.pop ? easeBack(u) : ease(u);
+      s.vis = true;
+      const f = a.from || [0, 0, 0], to = a.to || [0, 0, 0];
+      s.off.set(f[0] + (to[0]-f[0])*e, f[1] + (to[1]-f[1])*e, f[2] + (to[2]-f[2])*e);
+      if (a.arc) s.off.add(_v.set(...a.arc).multiplyScalar(Math.sin(PI*e)));
+      const rf = a.rf || [0, 0, 0], rt = a.rt || [0, 0, 0];
+      s.rot = rf.map((r, i) => r + (rt[i]-r)*e);
+      s.sc = a.pop ? Math.max(e, .001) : 1;
+      s.hl = a.pop ? 0 : (u < 1 ? 1 : Math.max(0, 1 - (t - a.t - a.d) / .9));
+    } else if (a.orient) {
+      const o = ORS[a.who || who], tgt = ORI[a.who || who][a.orient], e = ease(u);
+      if (u >= 1) { o.q.copy(qOf(tgt.e)); o.py = tgt.py; }
+      else { o.q = o.q.clone().slerp(qOf(tgt.e), e); o.py = restHeight(a.who || who, o.q) + (a.lift || 0)*Math.sin(PI*e); }
+    }
+  }
+}
+function applyScene(k, t) {
+  for (const n in ST) { const s = ST[n]; s.vis = false; s.off.set(0, 0, 0); s.rot = [0, 0, 0]; s.sc = 1; s.hl = 0; }
+  ORS.cab = { q: qOf(ORI.cab.side.e), py: ORI.cab.side.py };
+  ORS.drw = { q: qOf(ORI.drw.front.e), py: ORI.drw.front.py };
+  for (let j = 0; j < k; j++) runActs(S[j], Infinity);
+  runActs(S[k], t);
+  for (const n in PARTS) {
+    const P = PARTS[n], s = ST[n];
+    P.obj.visible = s.vis;
+    if (!s.vis) continue;
+    P.obj.position.copy(P.home).add(s.off);
+    P.obj.rotation.set(...s.rot);
+    P.obj.scale.setScalar(s.sc);
+    if (P.mat) P.mat.color.copy(P.base).lerp(HL, s.hl * .55);
+  }
+  cabPivot.quaternion.copy(ORS.cab.q); cabPivot.position.y = ORS.cab.py;
+  drwPivot.quaternion.copy(ORS.drw.q); drwPivot.position.y = ORS.drw.py;
+  const g = S[k].g;
+  cabPivot.visible = g === 'cab' || g === 'final';
+  drwPivot.visible = g === 'drw';
+  introG.forEach((ig, i) => ig.visible = g === 'intro' + i);
+}
+
+/* ---- 暫時性物件：工具、記號線、箭頭 ---- */
+let TR = [];
+function buildTransients(k) {
+  TR.forEach(o => o.root.parent && o.root.parent.remove(o.root));
+  TR = [];
+  const host = S[k].g === 'drw' ? drwInner : cabInner;
+  for (const a of S[k].acts) {
+    if (a.tool) {
+      let parent = host, at, dir;
+      if (a.on) { const P = PARTS[a.on]; parent = P.obj.parent; at = P.home.clone(); dir = P.dir.clone(); }
+      else { at = V(a.at); dir = V(a.dir).normalize(); }
+      const root = new THREE.Group(), orient = new THREE.Group(), spin = new THREE.Group();
+      orient.quaternion.setFromUnitVectors(Y, dir);
+      spin.add(toolMesh(a.tool)); orient.add(spin); root.add(orient); parent.add(root);
+      TR.push({ a, root, spin, at, dir, to: a.to ? V(a.to) : null });
+    } else if (a.mark) {
+      const A = V(a.mark[0]), B = V(a.mark[1]), len = A.distanceTo(B);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, .55, .55), MAT.mark);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), B.clone().sub(A).normalize());
+      host.add(m); TR.push({ a, root: m, A, B, len });
+    } else if (a.arrow) {
+      const g = new THREE.Group(), inner = new THREE.Group();
+      inner.add(cyl(.7, 7, MAT.black, -7.5));
+      const c = new THREE.Mesh(new THREE.ConeGeometry(2, 4, 20), MAT.black); c.rotation.x = PI; c.position.y = -2; inner.add(c);
+      inner.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), V(a.dir).normalize());
+      g.add(inner); host.add(g); TR.push({ a, root: g, at: V(a.arrow), dir: V(a.dir).normalize() });
+    }
+  }
+}
+function updateTransients(t) {
+  for (const o of TR) {
+    const a = o.a, u = (t - a.t) / a.d;
+    if (a.mark) {
+      o.root.visible = t >= a.t;
+      const e = ease(clamp01(u)), L = Math.max(o.len * e, .01);
+      o.root.scale.x = L;
+      o.root.position.copy(o.A).lerp(o.B, e / 2);
+      continue;
+    }
+    const vis = u >= 0 && u <= 1;
+    o.root.visible = vis;
+    if (!vis) continue;
+    const s = Math.max(.001, Math.min(1, u*7, (1-u)*7));
+    if (a.arrow) {
+      o.root.scale.setScalar(s);
+      o.root.position.copy(o.at).addScaledVector(o.dir, 2.2*Math.sin(u*PI*4) - 2);
+      continue;
+    }
+    o.root.scale.setScalar(s);
+    const back = 7*(1 - ease(clamp01(u/.2))) + 7*ease(clamp01((u - .82)/.18));
+    let pos = o.at, dist = back;
+    if (a.mode === 'spin') o.spin.rotation.y = -u * a.d * 7;
+    else if (a.mode === 'hammer') dist = back + 3.5*Math.abs(Math.sin(u*PI*Math.max(2, Math.round(a.d*2.6))));
+    else if (a.mode === 'tap') dist = 3*Math.abs(Math.sin(u*PI));
+    else if (a.mode === 'draw') pos = o.at.clone().lerp(o.to, ease(clamp01((u - .12)/.76)));
+    o.root.position.copy(pos).addScaledVector(o.dir, -dist);
+  }
+}
+
+/* =====================================================================
+   攝影機
+   ===================================================================== */
+let camTw = null, userCam = false;
+function camTo(c, dur = 1.6) {
+  camTw = { p0: camera.position.clone(), t0: controls.target.clone(), p1: V(c.p), t1: V(c.t), u: 0, dur };
+}
+controls.addEventListener('start', () => { camTw = null; userCam = true; hideHint(); });
+
+/* =====================================================================
+   音樂（Web Audio 即時生成）
+   ===================================================================== */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const MUSIC = {
+  vol: .5, muted: false, duck: 1, ctx: null,
+  init() {
+    if (this.ctx) return;
+    const c = this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = c.createGain(); this.master.gain.value = 0;
+    const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3;
+    this.master.connect(comp); comp.connect(c.destination);
+    this.sfx = c.createGain(); this.sfx.gain.value = .9; this.sfx.connect(c.destination);
+    const len = c.sampleRate; this.noise = c.createBuffer(1, len, c.sampleRate);
+    const d = this.noise.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random()*2 - 1;
+  },
+  apply() {
+    if (!this.ctx) return;
+    const g = this.muted ? 0 : this.vol * .42 * this.duck;
+    this.master.gain.setTargetAtTime(g, this.ctx.currentTime, .25);
+  },
+  start() {
+    this.init(); this.ctx.resume();
+    if (this.timer) return;
+    this.step = 0; this.next = this.ctx.currentTime + .1;
+    this.timer = setInterval(() => this.sched(), 25);
+    this.apply();
+  },
+  sched() {
+    const c = this.ctx, e8 = 60 / 116 / 2;
+    while (this.next < c.currentTime + .15) { this.play8(this.step, this.next); this.next += e8; this.step = (this.step + 1) % 64; }
+  },
+  CH: [[60, 64, 67], [59, 62, 67], [57, 60, 64], [57, 60, 65], [60, 64, 67], [59, 62, 67], [57, 60, 65], [59, 62, 67]],
+  BASS: [36, 43, 45, 41, 36, 43, 41, 43],
+  MEL: [72,0,76,79, 76,0,74,72,  74,0,71,74, 79,0,77,74,  76,0,72,76, 81,79,76,0,  77,0,76,74, 72,0,69,0,
+        72,76,79,84, 83,0,79,76, 74,0,79,0, 77,76,74,71, 72,0,77,81, 79,0,77,76, 74,0,71,0, 67,0,0,0],
+  play8(i, t) {
+    const bar = i >> 3, pos = i & 7, loop = Math.floor(i / 64);
+    if (pos === 0 || pos === 4) this.kick(t);
+    if (pos === 2 || pos === 6) this.clap(t);
+    this.hat(t, pos % 2 ? .05 : .025);
+    const r = this.BASS[bar];
+    if (pos === 0 || pos === 3 || pos === 4 || pos === 6) this.tone(mtof(pos === 6 ? r + 12 : r), t, .28, .22, 'triangle', 900);
+    if (pos === 2 || pos === 6 || pos === 7 && bar % 2) this.CH[bar].forEach(n => this.tone(mtof(n), t, .16, .045, 'square', 1600));
+    const m = this.MEL[i];
+    if (m) { this.tone(mtof(m), t, .32, .085, 'triangle', 3200); this.tone(mtof(m + 12), t, .18, .025, 'sine', 5000); }
+  },
+  tone(f, t, dur, g, type, lp, out) {
+    const c = this.ctx, o = c.createOscillator(), a = c.createGain(), fl = c.createBiquadFilter();
+    o.type = type; o.frequency.value = f; fl.type = 'lowpass'; fl.frequency.value = lp;
+    a.gain.setValueAtTime(0, t); a.gain.linearRampToValueAtTime(g, t + .008); a.gain.exponentialRampToValueAtTime(.0005, t + dur);
+    o.connect(fl); fl.connect(a); a.connect(out || this.master); o.start(t); o.stop(t + dur + .05);
+  },
+  kick(t) {
+    const c = this.ctx, o = c.createOscillator(), a = c.createGain();
+    o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + .12);
+    a.gain.setValueAtTime(.35, t); a.gain.exponentialRampToValueAtTime(.001, t + .22);
+    o.connect(a); a.connect(this.master); o.start(t); o.stop(t + .25);
+  },
+  nz(t, dur, g, type, f, out) {
+    const c = this.ctx, s = c.createBufferSource(), fl = c.createBiquadFilter(), a = c.createGain();
+    s.buffer = this.noise; fl.type = type; fl.frequency.value = f;
+    a.gain.setValueAtTime(g, t); a.gain.exponentialRampToValueAtTime(.001, t + dur);
+    s.connect(fl); fl.connect(a); a.connect(out || this.master); s.start(t, Math.random()*.5); s.stop(t + dur + .02);
+  },
+  hat(t, g) { this.nz(t, .045, g, 'highpass', 7500); },
+  clap(t) { this.nz(t, .12, .09, 'bandpass', 1800); },
+  fanfare() {
+    this.init(); this.ctx.resume();
+    const t = this.ctx.currentTime + .05, o = this.sfx;
+    // 拉炮聲
+    this.nz(t, .25, .6, 'bandpass', 2500, o); this.nz(t + .09, .3, .45, 'bandpass', 3500, o);
+    // 上行琶音 + 和弦
+    [72, 76, 79, 84].forEach((n, k) => { this.tone(mtof(n), t + .12 + k*.1, .5, .22, 'triangle', 6000, o); this.tone(mtof(n+12), t + .12 + k*.1, .3, .06, 'sine', 8000, o); });
+    [72, 76, 79, 84, 88].forEach(n => this.tone(mtof(n), t + .6, 1.6, .1, 'triangle', 5000, o));
+    [48, 60].forEach(n => this.tone(mtof(n), t + .6, 1.4, .15, 'sine', 2000, o));
+    // 閃亮音
+    for (let k = 0; k < 14; k++) this.tone(1800 + Math.random()*2600, t + .7 + k*.09, .15, .04, 'sine', 9000, o);
+  },
+};
+
+const muteBtn = $('#muteBtn'), vol = $('#vol');
+const ICON_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>';
+const ICON_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6M16 9l6 6"/></svg>';
+function syncAudioUI() {
+  muteBtn.innerHTML = MUSIC.muted ? ICON_OFF : ICON_ON;
+  muteBtn.title = MUSIC.muted ? '開啟背景音樂' : '背景音樂靜音';
+  vol.style.background = `linear-gradient(var(--blue),var(--blue)) 0/${vol.value*100}% 100% no-repeat,#d6d3cc`;
+}
+muteBtn.onclick = () => { MUSIC.muted = !MUSIC.muted; MUSIC.apply(); syncAudioUI(); };
+vol.oninput = () => { MUSIC.vol = +vol.value; if (MUSIC.vol > 0 && MUSIC.muted) MUSIC.muted = false; MUSIC.apply(); syncAudioUI(); };
+syncAudioUI();
+
+/* =====================================================================
+   旁白與字幕
+   ===================================================================== */
+const voice = new Audio(); voice.preload = 'auto';
+let voiceTimer = null, voiceFailed = false;
+const subEl = $('#sub span');
+function playVoice(k) {
+  voice.pause(); clearTimeout(voiceTimer); voiceFailed = false;
+  voice.src = `audio/s${String(k).padStart(2, '0')}.mp3`;
+  voiceTimer = setTimeout(() => { voice.currentTime = 0; voice.play().catch(() => voiceFailed = true); }, 400);
+}
+const voicePlaying = () => !voice.paused && !voice.ended;
+function updateSub(k, t) {
+  const tt = voicePlaying() || voice.ended ? voice.currentTime : t - .4;
+  const cues = NAR[k].cues;
+  let txt = '';
+  for (const c of cues) if (tt >= c.s - .05) txt = c.t;
+  if (subEl.textContent !== txt) subEl.textContent = txt;
+}
+
+/* =====================================================================
+   播放流程
+   ===================================================================== */
+let cur = -1, time = 0, playing = false, dur = 0, firedCams = new Set();
+const ctrl = $('#ctrl'), nextBtn = $('#nextBtn'), prevBtn = $('#prevBtn');
+const NEXT_HTML = nextBtn.innerHTML;
+const progI = $('#progress i');
+S.forEach((_, i) => { if (i) { const b = document.createElement('b'); b.style.left = (i / S.length * 100) + '%'; $('#progress').appendChild(b); } });
+
+function sceneDur(k) {
+  let end = 0;
+  for (const a of S[k].acts) end = Math.max(end, (a.t || 0) + (a.d || 0));
+  return Math.max(end, NAR[k].dur + .4) + .3;
+}
+function setThumb(k) { $('#thumb em span').textContent = S[k].page; }
+function playScene(k) {
+  k = Math.max(0, Math.min(S.length - 1, k));
+  cur = k; time = 0; playing = true; dur = sceneDur(k);
+  firedCams = new Set(); userCam = false; controls.autoRotate = false;
+  buildTransients(k);
+  camTo(S[k].cam, k === 0 ? 2 : 1.6);
+  playVoice(k);
+  MUSIC.duck = .55; MUSIC.apply();
+  ctrl.classList.remove('show'); $('#playing').style.opacity = 1;
+  $('#doneMsg').classList.remove('show');
+  $('#step .n').textContent = `${S[k].n} · ${k + 1} / ${S.length}`;
+  $('#step .t').textContent = S[k].title;
+  setThumb(k);
+  subEl.textContent = '';
+}
+function finishScene() {
+  playing = false;
+  MUSIC.duck = 1; MUSIC.apply();
+  prevBtn.disabled = cur === 0;
+  const last = cur === S.length - 1;
+  nextBtn.classList.toggle('done', last);
+  nextBtn.innerHTML = last ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>完成' : NEXT_HTML;
+  ctrl.classList.add('show'); $('#playing').style.opacity = 0;
+}
+prevBtn.onclick = () => playScene(cur - 1);
+$('#replayBtn').onclick = () => playScene(cur);
+nextBtn.onclick = () => { if (cur === S.length - 1) celebrate(); else playScene(cur + 1); };
+addEventListener('keydown', e => {
+  if (cur < 0 || playing) return;
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextBtn.click(); }
+  else if (e.key === 'ArrowLeft' && cur > 0) prevBtn.click();
+  else if (e.key.toLowerCase() === 'r') playScene(cur);
+});
+
+$('#startBtn').onclick = () => {
+  MUSIC.start();
+  voice.src = 'audio/s00.mp3'; voice.play().then(() => voice.pause()).catch(() => {}); // 解鎖行動裝置音訊
+  $('#intro').classList.add('hide');
+  stage.classList.add('on');
+  setTimeout(() => { $('#hint').classList.add('show'); setTimeout(hideHint, 6000); }, 1200);
+  playScene(0);
+};
+function hideHint() { $('#hint').classList.remove('show'); }
+
+/* ---- 彩帶 ---- */
+const fx = {
+  c: $('#fx'), P: [], run: false,
+  resize() { const r = window.devicePixelRatio || 1; this.c.width = stage.clientWidth * r; this.c.height = stage.clientHeight * r; },
+  burst() {
+    const W = this.c.width, H = this.c.height, s = W / 1600;
+    const COL = ['#0058a3', '#ffdb00', '#ff6b6b', '#3cc4b4', '#ffffff', '#f79ac0', '#7bd389', '#ff9f43'];
+    const add = (x, y, ang, spd, n) => {
+      for (let i = 0; i < n; i++) {
+        const a = ang + (Math.random() - .5) * .9, v = spd * (.55 + Math.random() * .6) * s;
+        this.P.push({ x, y, vx: Math.cos(a)*v, vy: Math.sin(a)*v, c: COL[i % COL.length], rib: Math.random() < .35,
+          w: (6 + Math.random()*6)*s, h: (10 + Math.random()*8)*s, len: (40 + Math.random()*50)*s,
+          r: Math.random()*PI*2, vr: (Math.random() - .5)*.3, ph: Math.random()*PI*2, life: 0 });
+      }
+    };
+    add(0, H, -PI*.3, 34, 140); add(W, H, -PI*.7, 34, 140);
+    setTimeout(() => add(W/2, H*.05, PI/2, 6, 120), 350);
+    if (!this.run) { this.run = true; requestAnimationFrame(() => this.tick()); }
+  },
+  tick() {
+    const x = this.c.getContext('2d'), W = this.c.width, H = this.c.height, s = W / 1600;
+    x.clearRect(0, 0, W, H);
+    this.P = this.P.filter(p => p.y < H + 100*s && p.life < 600);
+    for (const p of this.P) {
+      p.life++; p.vx *= .985; p.vy = p.vy*.985 + .32*s; p.x += p.vx + Math.sin(p.ph + p.life*.05)*.8*s; p.y += p.vy; p.r += p.vr;
+      x.fillStyle = x.strokeStyle = p.c;
+      if (p.rib) {
+        x.lineWidth = 3.2*s; x.beginPath();
+        for (let k = 0; k <= 8; k++) {
+          const tt = k / 8, px = p.x + Math.cos(p.r)*p.len*tt + Math.sin(tt*PI*3 + p.life*.2)*6*s, py = p.y + Math.sin(p.r)*p.len*tt;
+          k ? x.lineTo(px, py) : x.moveTo(px, py);
+        }
+        x.stroke();
+      } else {
+        x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.scale(1, Math.cos(p.life*.15 + p.ph));
+        x.fillRect(-p.w/2, -p.h/2, p.w, p.h); x.restore();
+      }
+    }
+    if (this.P.length) requestAnimationFrame(() => this.tick()); else { this.run = false; x.clearRect(0, 0, W, H); }
+  },
+};
+function celebrate() {
+  fx.burst(); MUSIC.fanfare();
+  $('#doneMsg').classList.add('show');
+  clearTimeout(celebrate.t); celebrate.t = setTimeout(() => $('#doneMsg').classList.remove('show'), 3800);
+}
+
+/* =====================================================================
+   主迴圈
+   ===================================================================== */
+new ResizeObserver(resize).observe(stage);
+applyScene(S.length - 1, Infinity);
+controls.autoRotate = true; controls.autoRotateSpeed = .8;
+let frozen = false;
+window.__app = { playScene, S, snap(k, t) {  // 除錯用：定格在某場景的某個時間點
+  playScene(k); voice.pause(); clearTimeout(voiceTimer); frozen = true; time = t; camTw = null;
+  let c = S[k].cam; for (const a of S[k].acts) if (a.cam && a.t <= t) { c = a.cam; firedCams.add(a); }
+  camera.position.copy(V(c.p)); controls.target.copy(V(c.t));
+}, unfreeze() { frozen = false; } };
+const clock = new THREE.Clock();
+function loop() {
+  const dt = Math.min(clock.getDelta(), .05);
+  if (cur >= 0) {
+    if (playing && !frozen) {
+      time += dt;
+      for (const a of S[cur].acts) if (a.cam && time >= a.t && !firedCams.has(a)) { firedCams.add(a); if (!userCam) camTo(a.cam, 1.8); }
+      const doneAnim = time >= dur, voiceDone = voiceFailed || voice.ended || (time > NAR[cur].dur + 3);
+      if (doneAnim && voiceDone) finishScene();
+      progI.style.width = ((cur + Math.min(time / dur, 1)) / S.length * 100) + '%';
+    } else progI.style.width = ((cur + 1) / S.length * 100) + '%';
+    applyScene(cur, time);
+    updateTransients(time);
+    updateSub(cur, time);
+    const g = S[cur].g;
+    if (g.startsWith('intro')) introG[+g.slice(5)].rotation.y = Math.sin(performance.now() / 2600) * .22;
+  }
+  if (camTw) {
+    camTw.u += dt / camTw.dur; const e = ease(clamp01(camTw.u));
+    camera.position.lerpVectors(camTw.p0, camTw.p1, e); controls.target.lerpVectors(camTw.t0, camTw.t1, e);
+    if (camTw.u >= 1) camTw = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
